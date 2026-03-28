@@ -693,6 +693,187 @@ MIT — free to use, modify, and distribute.
 
 ---
 
+## COMMON AI FAILURE MODES — HOW EACH WAS CAUGHT
+
+The six failure modes below are among the most frequent problems in AI-generated front-end code. Each one appeared in some form during this project. This section documents the specific instance found and the exact fix applied.
+
+---
+
+### 1. Inconsistent Variable or Class Names Across Files
+
+**Failure mode:** AI generates files in separate passes and quietly uses different names for the same concept — a CSS class named `.card-face` in one file but `.study-card-face` in another, or a JS variable `activeDeck` in one function and `currentDeck` somewhere else.
+
+**How it was caught:** Cross-file review of every shared name at integration time. All DOM element references in `app.js` are cached once at the top of each section using `getElementById` bound to the exact `id` values in `index.html`. CSS class names like `.is-flipped`, `.active`, `.no-results`, and `.deck-item` are used identically in `style.css` and toggled by name in `app.js` — verified by grepping both files for each class.
+
+**Example — consistent across all three files:**
+
+```text
+index.html:   <ul id="deck-list" ...>
+app.js:       const deckList = document.getElementById('deck-list');
+style.css:    .deck-list { ... }
+```
+
+No aliases, no synonyms. One name, one purpose, used everywhere.
+
+---
+
+### 2. Event Listeners Added Multiple Times
+
+**Failure mode:** Listeners attached inside render functions re-run on every render, stacking duplicate handlers on the same element. Clicking once fires the callback twice, four times, eight times — depending on how many renders have occurred.
+
+**How it was caught:** Two patterns were applied consistently.
+
+**Event delegation** — one listener is attached to each parent container exactly once at startup. It inspects `e.target.closest('[data-action]')` to identify which action was triggered, regardless of how many times the child list is re-rendered:
+
+```js
+// Attached once. Handles all current and future deck items.
+deckList.addEventListener('click', async e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const { action, deckId } = el.dataset;
+  // dispatch on action ...
+});
+```
+
+**Named-reference cleanup** — study mode is the only place dynamic listeners are added and removed. Handler functions are stored by name on `state.study._handlers` so `removeEventListener` receives the exact same object reference that `addEventListener` received:
+
+```js
+// Attach — named references stored
+function _attachStudyListeners() {
+  const docKey    = e => { /* Arrow keys, Escape */ };
+  const cardClick = () => flipCard();
+  const cardKey   = e => { /* Space, Enter */ };
+  state.study._handlers = { docKey, cardClick, cardKey };
+  document.addEventListener('keydown', docKey);
+  studyCardEl.addEventListener('click',   cardClick);
+  studyCardEl.addEventListener('keydown', cardKey);
+}
+
+// Detach — same references, guaranteed removal
+function _detachStudyListeners() {
+  const h = state.study._handlers;
+  document.removeEventListener('keydown',   h.docKey);
+  studyCardEl.removeEventListener('click',  h.cardClick);
+  studyCardEl.removeEventListener('keydown', h.cardKey);
+  state.study._handlers = null;
+}
+```
+
+---
+
+### 3. Missing Accessibility Attributes and Focus Management
+
+**Failure mode:** AI generates visually correct UI but omits `aria-label`, `role`, `aria-live`, and focus-management code entirely. Interactive elements are unreachable by keyboard; screen readers announce nothing useful.
+
+**How it was caught:** A dedicated Part 6 accessibility audit ran through the WCAG 2.1 AA checklist. Issues found and fixed:
+
+| Issue | Fix applied |
+| ----- | ----------- |
+| No skip link | Added `<a href="#main" class="skip-link">` as first focusable element |
+| `[hidden]` on `aria-live` region | Removed `hidden`; cleared with `textContent = ''` so region stays registered |
+| Redundant `aria-label` duplicating `<label>` text | Removed `aria-label` from both search inputs |
+| `--clr-text-muted` at 4.24:1 (fails AA) | Changed `#6b7280` → `#4b5563` (6.11:1) |
+| Modals not trapping focus | `Modal` class queries all focusable descendants; Tab/Shift+Tab wraps within |
+| No focus return on modal close | `modal.open(opener)` stores the opener; `modal.close()` calls `opener.focus()` |
+| No focus return on study exit | `state.study.opener` set to `btnStudy` on enter; restored on exit |
+
+---
+
+### 4. Fragile DOM Queries Tied to Generated Markup
+
+**Failure mode:** AI queries elements using positional selectors like `.card:nth-child(2) > span` or class names generated inline during render. When the rendered markup changes even slightly, the query silently returns `null` and the next property access throws.
+
+**How it was caught:** Two rules were enforced throughout.
+
+**Stable IDs for singletons** — every unique element in `index.html` has a meaningful `id`. All references in `app.js` are cached once at startup using `getElementById`, not re-queried on every render:
+
+```js
+// Cached once — never re-queried inside render loops
+const deckTitleEl   = document.getElementById('deck-title');
+const cardList      = document.getElementById('card-list');
+const studyCardEl   = document.getElementById('study-card');
+```
+
+**Data attributes for collections** — repeated items (deck list items, card list items) carry `data-deck-id` / `data-card-id` attributes. Scoped queries use these stable attributes instead of positional selectors:
+
+```js
+// Scoped, stable — survives any re-order or re-render
+const li = deckList.querySelector(`li[data-deck-id="${deck.id}"]`);
+li.querySelector('[data-action="edit-deck"]').setAttribute('aria-label', ...);
+```
+
+---
+
+### 5. LocalStorage Read / Write Errors on Malformed Data
+
+**Failure mode:** AI-generated persistence code calls `JSON.parse(localStorage.getItem(...))` and accesses the result directly. If the stored string is truncated, manually edited, or from a different schema version, the parse throws or returns unexpected types and the app crashes on load.
+
+**How it was caught:** `storage.js` applies four independent defences:
+
+```js
+function loadState(state) {
+  try {
+    // Defence 1 — schema version check before any parse
+    const storedVersion = parseInt(localStorage.getItem(LS_KEYS.schemaVer), 10);
+    if (storedVersion > SCHEMA_VERSION) {
+      console.warn('[Storage] Future schema — loading read-only.');
+    }
+
+    // Defence 2 — isolated inner try/catch around JSON.parse only
+    let parsed;
+    try {
+      parsed = JSON.parse(rawDecks);
+    } catch (parseErr) {
+      console.warn('[Storage] Corrupted JSON — starting fresh.', parseErr);
+      return; // leave state.decks as empty array
+    }
+
+    // Defence 3 — type check before iterating
+    if (!Array.isArray(parsed)) {
+      console.warn('[Storage] Unexpected type — starting fresh.');
+      return;
+    }
+
+    // Defence 4 — shape normalisation on every item
+    state.decks = migrated.map(_normaliseDeck); // fills in missing fields with defaults
+
+  } catch (err) {
+    // Outer catch: SecurityError if localStorage blocked (sandboxed iframe, etc.)
+    console.warn('[Storage] loadState failed — starting fresh.', err);
+  }
+}
+```
+
+`saveState()` likewise wraps the `JSON.stringify` + `setItem` calls in a `try/catch` so a quota-exceeded error is surfaced as a console warning rather than an uncaught exception.
+
+---
+
+### 6. Animation States Not Reset on Content Change
+
+**Failure mode:** AI applies a CSS animation class (e.g. `.is-flipped`) and never removes it when the content changes. Navigating to the next card leaves the previous card's flipped state visible — the new content appears on the back face while the front face is empty.
+
+**How it was caught:** The flip reset is guaranteed by architectural rule, not by hoping each navigation function remembers to call it.
+
+`_setStudyCard(idx)` is the **single codepath** for changing which card is displayed. It calls `_resetFlip()` unconditionally as its first action — no navigation function (Next, Prev, Shuffle, keyboard shortcut) can change the card without also resetting the flip:
+
+```js
+function _setStudyCard(idx) {
+  const safeIdx = Math.max(0, Math.min(idx, state.study.cards.length - 1));
+  state.study.index = safeIdx;
+  _resetFlip();          // ← always runs first, on every card change
+  _renderStudyCard();
+}
+
+function _resetFlip() {
+  studyCardEl.classList.remove('is-flipped');
+  state.study.flipped = false;
+}
+```
+
+`prefers-reduced-motion` is also respected: when the user has requested reduced motion, the CSS transition duration drops to near-zero, so the class toggle still fires (keeping state correct) but no animation plays.
+
+---
+
 ## REFLECTIONS
 
 - **Where AI saved time.**
