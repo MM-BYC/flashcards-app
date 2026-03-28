@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<!--
+  DOCTYPE declaration: tells the browser to render in standards mode (HTML5).
+  Without it, browsers fall back to "quirks mode" which breaks modern CSS layouts
+  like the CSS Grid used for the sidebar/main split.
+-->
+<html lang="en">
+<!--
+  lang="en": declares the document language.
+  Required for screen readers to use the correct pronunciation engine,
+  and for browser spell-check to work inside textarea inputs (card front/back).
+-->
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    charset UTF-8: ensures emoji (🗂, 📚) and special characters in card text
+    render correctly across all operating systems and browsers.
+  -->
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!--
+    viewport meta tag: enables responsive layout on mobile devices.
+    Without this, mobile browsers render the page at desktop width (980px) and
+    shrink it — the sidebar/main grid would be unreadable on phones.
+    Required to satisfy the "Responsive layout" deliverable.
+  -->
+
+  <title>Flashcards App</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <!--
+    External stylesheet: separates structure (HTML) from presentation (CSS).
+    Loaded in <head> so styles are applied before the body renders,
+    preventing a flash of unstyled content (FOUC).
+    No <script> here — app.js is deferred to the bottom of <body> so the
+    DOM is fully parsed before JS tries to query elements by ID.
+  -->
+</head>
+<body>
+
+  <!--
+    SKIP LINK — WCAG 2.4.1 (Bypass Blocks), Level A.
+    Keyboard-only and screen-reader users can skip the entire sidebar
+    (deck list + search) with one Tab + Enter press.
+    Visually hidden until focused; jumps to id="main".
+    Must be the first focusable element so it appears on the first Tab.
+  -->
+  <a href="#main" class="skip-link">Skip to main content</a>
+
+  <!-- ============================================================
+    HEADER
+    Requirement: Clean, readable UI — persistent branding and a
+    global "New Deck" shortcut visible from every view.
+
+    role="banner": ARIA landmark that screen readers list as "banner",
+    distinguishing it from the main content region.
+
+    position:sticky in CSS keeps it visible while the main area scrolls,
+    so users can always start a new deck without scrolling back to the top.
+  ============================================================ -->
+  <header class="app-header" role="banner">
+    <div class="header-brand">
+      <span class="header-logo" aria-hidden="true">🗂</span>
+      <!--
+        aria-hidden="true" on the emoji: prevents screen readers from announcing
+        "folder with tabs emoji" — purely decorative, adds no information.
+      -->
+      <h1 class="header-title">Flashcards</h1>
+      <!--
+        <h1> is the page's top-level heading. Only one <h1> per page (accessibility
+        best practice). Nested headings inside sections use <h2>.
+      -->
+    </div>
+    <div class="header-actions">
+      <button id="btn-new-deck" class="btn btn-primary" aria-label="Create new deck">
+        + New Deck
+      </button>
+      <!--
+        id="btn-new-deck": JS hooks onto this ID to open the deck creation modal.
+        aria-label: provides an unambiguous label for screen readers; the visible
+        text "+ New Deck" is sufficient visually but the aria-label adds context.
+        Satisfies the "Create decks" requirement.
+      -->
+    </div>
+  </header>
+
+  <!-- ============================================================
+    APP LAYOUT
+    A CSS Grid wrapper that holds the sidebar and main content side-by-side
+    on desktop, and stacks them vertically on tablets/mobile.
+    flex:1 in CSS makes this region fill all vertical space between the
+    sticky header and the footer — no hardcoded heights needed.
+  ============================================================ -->
+  <div class="app-layout">
+
+    <!-- ============================================================
+      SIDEBAR — Deck Navigation
+      Requirement: "App supports multiple decks" and "Persist last active deck."
+
+      <nav> with role="navigation": an ARIA landmark. Screen readers can jump
+      directly to the deck list using the landmarks menu — satisfies the
+      "basic accessibility" requirement without extra markup.
+
+      The sidebar holds:
+        1. A deck search input  (satisfies "Search/filter" requirement)
+        2. A <ul> populated by JS with one <li> per deck stored in LocalStorage
+        3. A fallback empty-state message shown when no decks exist yet
+    ============================================================ -->
+    <nav class="sidebar" role="navigation" aria-label="Decks">
+      <div class="sidebar-header">
+        <h2 class="sidebar-title">My Decks</h2>
+      </div>
+
+      <!-- Deck search
+           type="search": gives mobile keyboards a "Search" return key and
+           enables browser-native clear (✕) button on the input.
+           The label is visually hidden (.sr-only) because the placeholder is
+           descriptive enough visually — but the <label> element is still
+           required for screen reader association via for/id pairing. -->
+      <div class="sidebar-search">
+        <!--
+          Label is sr-only (hidden visually) because the search context is
+          clear from the "My Decks" heading above it. The <label> element
+          provides the programmatic association — aria-label removed to avoid
+          the redundancy of two descriptions (audit issue #21).
+        -->
+        <label for="deck-search" class="sr-only">Search decks</label>
+        <input
+          id="deck-search"
+          type="search"
+          class="input-search"
+          placeholder="Search decks…"
+        />
+      </div>
+
+      <!--
+        Deck list — populated entirely by app.js.
+        role="list" is redundant for <ul> in most browsers but is needed when
+        CSS sets list-style:none, which strips the implicit list role in Safari.
+        Each injected <li> will have role="listitem" for the same reason.
+
+        JS template (shown in comment for reference):
+          <li class="deck-item [active]" role="listitem">
+            <button class="deck-item-btn" [aria-current="true"]>
+              <span class="deck-name">Biology</span>
+              <span class="deck-count">12 cards</span>  ← live card count from LocalStorage
+            </button>
+            <div class="deck-item-actions">
+              <button class="btn-icon" aria-label="Edit deck Biology">✏️</button>
+              <button class="btn-icon" aria-label="Delete deck Biology">🗑</button>
+            </div>
+          </li>
+
+        aria-current="true" on the active deck button: tells screen readers
+        which deck is currently selected, equivalent to a visual highlight.
+      -->
+      <ul id="deck-list" class="deck-list" role="list" aria-label="Deck list">
+        <!-- Deck items injected by JS -->
+      </ul>
+
+      <!--
+        Empty state: shown by JS (removing [hidden]) when no decks exist in
+        LocalStorage. Guides new users rather than showing a blank panel.
+        The [hidden] attribute is the HTML-native way to hide elements; it also
+        hides them from the accessibility tree so screen readers skip it.
+      -->
+      <!--
+        Enhanced sidebar empty state (audit issue #13).
+        Includes an icon, instructional text, AND an action button so the
+        user has a direct path to creating their first deck without having
+        to hunt for the header button.
+        aria-hidden on the icon: purely decorative — screen reader should
+        not announce "card index divider emoji".
+      -->
+      <div id="no-decks-msg" class="sidebar-empty" hidden>
+        <p class="sidebar-empty-icon" aria-hidden="true">🗂️</p>
+        <p class="sidebar-empty-text">No decks yet.</p>
+        <button id="btn-new-deck-sidebar" class="btn btn-primary btn--sm" aria-label="Create your first deck">
+          + New Deck
+        </button>
+      </div>
+    </nav>
+
+    <!-- ============================================================
+      MAIN CONTENT AREA
+      role="main": ARIA landmark. Allows keyboard-only users to skip the
+      sidebar entirely with a screen reader "skip to main" shortcut.
+
+      Contains three mutually exclusive views:
+        1. #view-empty  — shown when no deck is selected
+        2. #view-deck   — shows a deck's card grid + study/add controls
+        3. #view-study  — the full-screen study (flip) mode
+
+      JS toggles visibility by setting/removing the [hidden] attribute.
+      Only one view is visible at a time; this is a Single-Page App pattern
+      without a router or build tool — pure HTML/CSS/JS as required.
+    ============================================================ -->
+    <main class="main-content" id="main" role="main">
+
+      <!-- ============================================================
+        VIEW 1: EMPTY STATE
+        Shown on first load when LocalStorage has no decks, or when the
+        last deck is deleted. Gives users a clear call-to-action instead
+        of a confusing blank screen.
+        aria-label on <section> acts as a region label for screen readers.
+      ============================================================ -->
+      <section id="view-empty" class="view view-empty" aria-label="No deck selected">
+        <div class="empty-state">
+          <p class="empty-icon" aria-hidden="true">📚</p>
+          <h2>Select or create a deck</h2>
+          <p>Choose a deck from the sidebar, or create a new one to get started.</p>
+          <button id="btn-new-deck-main" class="btn btn-primary">+ New Deck</button>
+          <!--
+            Duplicate of the header button: on mobile the header is small and
+            this centered call-to-action is more discoverable on first use.
+          -->
+        </div>
+      </section>
+
+      <!-- ============================================================
+        VIEW 2: DECK VIEW (Card List)
+        Requirements addressed here:
+          - "Each deck has cards with front/back text" → card grid
+          - "Create, edit, delete cards" → Add Card button + per-card actions
+          - "Search/filter within a deck by keyword" → #card-search input
+          - "Persist data" → JS reads/writes to LocalStorage on every change
+
+        [hidden] attribute starts this view hidden; JS reveals it when the
+        user selects a deck from the sidebar.
+      ============================================================ -->
+      <section id="view-deck" class="view" hidden aria-label="Current deck">
+
+        <!-- Deck header: title + card count are updated by JS when a deck
+             is selected. flex-wrap in CSS keeps buttons from overflowing
+             on narrow viewports. -->
+        <div class="deck-header">
+          <div class="deck-header-info">
+            <h2 id="deck-title" class="deck-title">Deck Name</h2>
+            <!--
+              id="deck-title": JS writes the active deck's name here each time
+              a deck is selected, satisfying the multi-deck requirement.
+            -->
+            <span id="deck-card-count" class="deck-subtitle">0 cards</span>
+            <!--
+              Live card count: updated by JS whenever a card is added/deleted.
+              Helps users see at a glance how large a deck is before studying.
+            -->
+          </div>
+          <div class="deck-header-actions">
+            <button id="btn-study" class="btn btn-primary" aria-label="Start study mode">
+              Study
+            </button>
+            <!--
+              Switches to #view-study. Disabled by JS when the deck has 0 cards
+              (nothing to study). Satisfies the "Study mode" requirement.
+            -->
+            <button id="btn-add-card" class="btn btn-secondary" aria-label="Add a new card">
+              + Add Card
+            </button>
+            <!--
+              Opens #modal-card. Satisfies "Create cards" requirement.
+            -->
+          </div>
+        </div>
+
+        <!--
+          Card filter bar — search input + live match count (audit issues #9, #22).
+
+          aria-label removed from input: the <label for="card-search"> already
+          provides the accessible name — two sources of the same name is redundant.
+
+          #card-search-count stays in the DOM at all times (no [hidden] attribute).
+          aria-live regions must be present in the DOM BEFORE content changes fire;
+          adding [hidden] and removing it in the same render pass as the text change
+          means the screen reader may not have registered the live region yet,
+          so the announcement is silently dropped. JS sets textContent to "" instead.
+          aria-atomic="true": announce the whole count as one unit, not word-by-word.
+        -->
+        <div class="card-filter-bar">
+          <label for="card-search" class="sr-only">Search cards in this deck</label>
+          <input
+            id="card-search"
+            type="search"
+            class="input-search"
+            placeholder="Search cards…"
+          />
+          <span id="card-search-count" class="search-count" aria-live="polite" aria-atomic="true"></span>
+        </div>
+
+        <!--
+          Card grid — populated by JS from the active deck's cards array in
+          LocalStorage. Uses CSS Grid with auto-fill columns so it adapts from
+          1 column (mobile) up to as many as fit (desktop) automatically.
+
+          JS injects each card as:
+            <li class="card-item" role="listitem">
+              <div class="card-face card-front">{front text}</div>
+              <div class="card-face card-back">{back text}</div>
+              <div class="card-item-actions">
+                <button class="btn-icon" aria-label="Edit card">✏️</button>
+                <button class="btn-icon danger" aria-label="Delete card">🗑</button>
+              </div>
+            </li>
+
+          Showing front+back together in the list view (vs. the flip in study
+          mode) lets users review and manage all cards at a glance.
+        -->
+        <ul id="card-list" class="card-grid" role="list" aria-label="Cards in deck">
+          <!-- Card items injected by JS -->
+        </ul>
+
+        <!--
+          Enhanced deck empty state (audit issue #14).
+          Replaces bare text with icon + label + inline Add Card button so the
+          user has a direct action path. Telling a user to "add one above" is
+          poor UX if they have to find the button; putting it here removes friction.
+          id retained on the wrapper so JS can toggle [hidden] as before.
+        -->
+        <div id="no-cards-msg" class="deck-empty" hidden>
+          <p class="deck-empty-icon" aria-hidden="true">🃏</p>
+          <p class="deck-empty-text">No cards in this deck yet.</p>
+          <p class="deck-empty-hint">Add your first card to start studying.</p>
+          <button id="btn-add-card-empty" class="btn btn-primary" aria-label="Add first card to this deck">
+            + Add Card
+          </button>
+        </div>
+      </section>
+
+      <!-- ============================================================
+        VIEW 3: STUDY MODE
+        Requirements addressed:
+          - "Flip cards" → CSS 3D rotateY animation on .study-card
+          - "Next/previous" → Prev/Next buttons, JS tracks currentIndex
+          - "Shuffle" → JS Fisher-Yates shuffle on the card array copy
+          - Keyboard navigation → tabindex="0" + keydown handler in JS
+
+        This view takes over the full main area so the user can focus on
+        studying without distraction from the card grid or sidebar.
+      ============================================================ -->
+      <section id="view-study" class="view" hidden aria-label="Study mode">
+
+        <!-- Study toolbar: Back exits to #view-deck, progress counter shows
+             position in the deck, Shuffle reorders the card array in memory
+             (does NOT mutate LocalStorage — the stored order is preserved). -->
+        <div class="study-header">
+          <button id="btn-exit-study" class="btn btn-ghost" aria-label="Exit study mode">
+            ← Back
+          </button>
+          <span id="study-progress" class="study-progress" aria-live="polite">1 / 12</span>
+          <!--
+            aria-live="polite": when JS updates the text (e.g. "3 / 12"),
+            screen readers announce the new value after the current speech
+            finishes — keeping users informed without interrupting them.
+          -->
+          <button id="btn-shuffle" class="btn btn-ghost" aria-label="Shuffle cards">
+            Shuffle
+          </button>
+        </div>
+
+        <!--
+          THE FLASHCARD — core of the study experience.
+
+          role="button" + tabindex="0": makes the <div> focusable and
+          activatable via keyboard (Enter/Space), satisfying the
+          "keyboard navigation" accessibility requirement.
+
+          aria-label describes the interaction model to screen readers.
+
+          The CSS 3D flip works by:
+            1. .study-card has perspective:1000px (creates 3D space depth)
+            2. .study-card-inner has transform-style:preserve-3d
+               (children exist in the same 3D plane)
+            3. JS toggles class "flipped" on .study-card
+            4. CSS transitions .study-card-inner to rotateY(180deg)
+            5. .study-card-back starts pre-rotated rotateY(180deg),
+               so after the parent rotates 180° it faces forward
+            6. backface-visibility:hidden hides each face when it's
+               rotated away — no see-through effect
+        -->
+        <div
+          id="study-card"
+          class="study-card"
+          role="button"
+          tabindex="0"
+          aria-label="Flashcard — press Space or Enter to flip"
+        >
+          <div class="study-card-inner" aria-live="polite">
+            <!--
+              aria-live="polite" on the inner div: when JS swaps card content
+              (next/prev), screen readers announce the new front text.
+            -->
+            <div class="study-card-face study-card-front">
+              <p id="study-card-text" class="study-card-text">Front text here</p>
+              <span class="study-card-hint">Click or press Space to flip</span>
+              <!--
+                The hint is only visible on the front face; it disappears after
+                flip because the back face covers it. Guides first-time users.
+              -->
+            </div>
+            <div class="study-card-face study-card-back">
+              <!--
+                Back face: starts rotated 180° in CSS so it's invisible until
+                the card flips. Different background color (#f0f3ff) and border
+                color (primary blue) visually distinguish "answer" from "question."
+              -->
+              <p id="study-card-back-text" class="study-card-text">Back text here</p>
+            </div>
+          </div>
+        </div>
+
+        <!--
+          Study navigation controls.
+          role="group" + aria-label: groups the three buttons semantically
+          so screen readers announce "Card navigation group" before reading
+          each button — reduces cognitive load for keyboard-only users.
+
+          JS behavior:
+            Prev  → decrement currentIndex, reset flip state, update card text
+            Flip  → same as clicking the card (toggles "flipped" class)
+            Next  → increment currentIndex, reset flip state, update card text
+          Both Prev and Next wrap around (circular navigation).
+        -->
+        <div class="study-nav" role="group" aria-label="Card navigation">
+          <button id="btn-prev" class="btn btn-secondary" aria-label="Previous card">
+            ← Prev
+          </button>
+          <button id="btn-flip" class="btn btn-primary" aria-label="Flip card">
+            Flip
+          </button>
+          <button id="btn-next" class="btn btn-secondary" aria-label="Next card">
+            Next →
+          </button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ============================================================
+    FOOTER
+    role="contentinfo": ARIA landmark for page-level metadata.
+    Informs the user that data is saved locally — sets expectations
+    that there is no account/sync and data lives in their browser.
+    height is fixed in CSS so it doesn't shift layout.
+  ============================================================ -->
+  <footer class="app-footer" role="contentinfo">
+    <p>Flashcards App &mdash; data saved locally in your browser</p>
+  </footer>
+
+  <!-- ============================================================
+    MODALS
+    Placed at the end of <body> (outside .app-layout) so they are not
+    clipped by any parent with overflow:hidden. Fixed positioning in
+    CSS overlays the entire viewport regardless of scroll position.
+
+    Both modals use:
+      role="dialog"       → ARIA role; screen readers announce "dialog" on open
+      aria-modal="true"   → tells screen readers to ignore content behind the overlay
+      aria-labelledby     → points to the modal's <h2>, giving it an accessible name
+      [hidden]            → JS removes this attribute to open, adds it to close
+
+    novalidate on <form>: disables browser-native validation popups so JS can
+    show inline error messages using the .form-error <span> elements instead —
+    giving consistent, styled feedback across all browsers.
+
+    role="alert" on error spans: screen readers announce the error text
+    immediately when JS makes it visible (removes [hidden]), without the
+    user having to navigate to it — satisfies accessibility requirements.
+  ============================================================ -->
+
+  <!-- DECK MODAL: Create or Edit a Deck
+       JS reuses this single modal for both operations by changing:
+         - the modal title text (#modal-deck-title)
+         - whether it's saving a new deck or updating an existing one
+         - pre-filling #input-deck-name when editing -->
+  <div id="modal-deck" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-deck-title" hidden>
+    <div class="modal">
+      <h2 id="modal-deck-title" class="modal-title">New Deck</h2>
+      <form id="form-deck" novalidate>
+        <div class="form-group">
+          <label for="input-deck-name" class="form-label">Deck name</label>
+          <!--
+            Explicit <label> with for/id pairing: clicking the label focuses
+            the input — larger click target, required for accessibility.
+          -->
+          <input
+            id="input-deck-name"
+            type="text"
+            class="form-input"
+            placeholder="e.g. Biology Chapter 3"
+            required
+            aria-required="true"
+          />
+          <!--
+            required (HTML): hints to the browser and AT that the field is mandatory.
+            aria-required="true": redundant but ensures AT compatibility in older
+            browsers that don't expose the required attribute to the accessibility tree.
+          -->
+          <span id="deck-name-error" class="form-error" role="alert" hidden>Name is required.</span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-deck" class="btn btn-ghost">Cancel</button>
+          <!--
+            type="button" prevents accidental form submission when pressing Enter.
+            JS closes the modal and clears the form on click.
+          -->
+          <button type="submit" class="btn btn-primary">Save</button>
+          <!--
+            type="submit" triggers the form's "submit" event, which JS intercepts
+            via addEventListener("submit", ...) to validate and persist to LocalStorage.
+          -->
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CARD MODAL: Create or Edit a Card
+       Same reuse pattern as the deck modal.
+       Uses <textarea> instead of <input> because card text (especially the back)
+       can be multi-line — definitions, formulas, code snippets, etc.
+       resize:vertical in CSS lets users expand the textarea if needed. -->
+  <div id="modal-card" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-card-title" hidden>
+    <div class="modal">
+      <h2 id="modal-card-title" class="modal-title">New Card</h2>
+      <form id="form-card" novalidate>
+        <div class="form-group">
+          <label for="input-card-front" class="form-label">Front</label>
+          <textarea
+            id="input-card-front"
+            class="form-input form-textarea"
+            placeholder="Question or term…"
+            required
+            aria-required="true"
+          ></textarea>
+          <span id="card-front-error" class="form-error" role="alert" hidden>Front text is required.</span>
+        </div>
+        <div class="form-group">
+          <label for="input-card-back" class="form-label">Back</label>
+          <textarea
+            id="input-card-back"
+            class="form-input form-textarea"
+            placeholder="Answer or definition…"
+            required
+            aria-required="true"
+          ></textarea>
+          <span id="card-back-error" class="form-error" role="alert" hidden>Back text is required.</span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-card" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!--
+    app.js is loaded at the end of <body> (not in <head>) for two reasons:
+      1. The entire DOM is parsed before the script runs, so getElementById()
+         and querySelector() calls find their targets immediately — no need
+         for DOMContentLoaded wrappers.
+      2. The page renders visually before JS executes, so users on slow
+         connections see the layout rather than a blank screen.
+    No defer/async attributes needed because bottom-of-body achieves the
+    same non-blocking effect for a single-file app with no dependencies.
+  -->
+  <!-- CONFIRM MODAL
+       Accessible alternative to window.confirm() — native browser confirm dialogs
+       cannot be styled, don't respect focus traps, and are blocked in some contexts.
+       JS populates #confirm-message, sets button labels, and resolves a Promise
+       when the user clicks Confirm or Cancel. -->
+  <div id="modal-confirm" class="modal-overlay" role="alertdialog" aria-modal="true"
+       aria-labelledby="modal-confirm-title" aria-describedby="confirm-message" hidden>
+    <div class="modal modal--confirm">
+      <h2 id="modal-confirm-title" class="modal-title">Are you sure?</h2>
+      <p id="confirm-message" class="confirm-message">This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button id="btn-confirm-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="btn-confirm-ok" class="btn btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    storage.js loaded BEFORE app.js so loadState() and saveState() are
+    defined when app.js calls them at the bottom of its init block.
+    No module system needed — both files share the page's global scope.
+  -->
+  <script src="storage.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

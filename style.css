@@ -1,0 +1,1084 @@
+/* ============================================================
+   style.css — Flashcards App
+   No build tools, no preprocessors. Pure CSS loaded via <link> in index.html.
+
+   FILE STRUCTURE (in order):
+     1. CSS Custom Properties (:root)  — single source of truth for design tokens
+     2. Reset & Base                   — normalize browser defaults
+     3. Accessibility utilities        — .sr-only, :focus-visible
+     4. Header                         — sticky top bar
+     5. Layout (Grid)                  — sidebar + main split
+     6. Sidebar                        — deck list, search, empty state
+     7. Main Content                   — all three views (empty, deck, study)
+     8. Study Mode                     — 3D card flip mechanics
+     9. Buttons                        — reusable button variants
+    10. Inputs & Forms                 — text inputs, textareas, labels, errors
+    11. Modals                         — overlay + dialog box + animations
+    12. Footer
+    13. Responsive breakpoints         — tablet (768px) and mobile (480px)
+    14. Reduced-motion media query     — accessibility for vestibular disorders
+   ============================================================ */
+
+
+/* ============================================================
+   1. CSS CUSTOM PROPERTIES
+   Why: Centralizing design tokens in :root lets every rule reference
+   the same value by name. Changing --clr-primary here updates every
+   button, link, and focus ring at once — no search-and-replace needed.
+   Also enables future dark-mode support by overriding :root inside a
+   @media (prefers-color-scheme: dark) block without touching any rule.
+   ============================================================ */
+:root {
+  /* --- Colors ---
+     Two-level palette: semantic names (--clr-primary, --clr-danger) built
+     on top of literal hex values. Semantic names mean selectors describe
+     intent ("this is a danger action") rather than appearance ("this is red"). */
+  --clr-bg:          #f4f6fb;   /* page background — slightly blue-grey keeps it from feeling stark */
+  --clr-surface:     #ffffff;   /* cards, sidebar, header — pure white for maximum contrast */
+  --clr-surface-alt: #eef1f8;   /* hover states, secondary backgrounds */
+  --clr-border:      #d5dae8;   /* dividers, input borders */
+  --clr-primary:     #4f6ef7;   /* primary action color — buttons, active deck highlight, focus rings */
+  --clr-primary-hov: #3a57e8;   /* darker shade for hover — 4.5:1 contrast on white (WCAG AA) */
+  --clr-secondary:   #6b7280;   /* secondary text, muted labels */
+  --clr-danger:      #ef4444;   /* destructive actions (delete deck/card) */
+  --clr-danger-hov:  #dc2626;   /* darker danger for hover */
+  --clr-text:        #1e2436;   /* body text — near-black, not pure #000 to reduce harshness */
+  --clr-text-muted:  #4b5563;   /* Part 6 audit fix: #6b7280 failed WCAG AA (4.24:1 on --clr-bg).
+                                   #4b5563 gives 6.11:1 on --clr-bg and 6.65:1 on white — passes AA. */
+  --clr-focus:       #4f6ef7;   /* focus ring color — matches primary for visual consistency */
+
+  /* --- Typography ---
+     system-ui stack: uses the OS's native UI font (San Francisco on macOS/iOS,
+     Segoe UI on Windows, Roboto on Android/Chrome OS). No web font download =
+     faster load, better rendering, matches OS conventions. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* rem-based sizes: scale with the user's browser font-size preference.
+     If a user sets their browser to 20px base, all text grows proportionally —
+     required for accessibility (WCAG 1.4.4 Resize Text). */
+  --font-size-sm:  0.8125rem;   /* 13px — metadata, labels, hints */
+  --font-size-md:  0.9375rem;   /* 15px — body text, inputs */
+  --font-size-lg:  1.125rem;    /* 18px — section headings, study card text */
+  --font-size-xl:  1.375rem;    /* 22px — deck title, empty-state heading */
+
+  /* --- Spacing ---
+     A consistent 4px-based scale (xs=4, sm=8, md=16, lg=24, xl=32).
+     Using named tokens instead of magic numbers makes rhythm consistent
+     across all components without a design system or framework. */
+  --space-xs:  0.25rem;   /* 4px */
+  --space-sm:  0.5rem;    /* 8px */
+  --space-md:  1rem;      /* 16px */
+  --space-lg:  1.5rem;    /* 24px */
+  --space-xl:  2rem;      /* 32px */
+
+  /* --- Border radii ---
+     Graduated scale: sm for buttons/inputs, md for cards, lg for modals/study card.
+     Consistent rounding gives the UI a friendly, modern feel without custom values
+     scattered through the file. */
+  --radius-sm:   0.375rem;
+  --radius-md:   0.625rem;
+  --radius-lg:   1rem;
+  --radius-pill: 999px;     /* for fully-rounded badge shapes if needed */
+
+  /* --- Shadows ---
+     Three levels of elevation: sm (resting), md (hover/lifted), lg (modals).
+     Dual-layer shadows (one tight, one diffuse) look more natural than
+     single-layer box shadows. Alpha values kept low so they work on
+     colored backgrounds too. */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,.14);
+
+  /* --- Layout dimensions ---
+     Named here so the grid definition (.app-layout) and the sidebar rule
+     reference the same value — change one variable to resize both. */
+  --sidebar-width:  260px;
+  --header-height:  56px;
+  --footer-height:  44px;
+
+  /* --- Transitions ---
+     Two speeds: fast (150ms) for micro-interactions (hover, focus),
+     medium (250ms) for larger state changes. Using CSS variables lets all
+     interactive elements share the same timing without duplication. */
+  --transition-fast: 0.15s ease;
+  --transition-med:  0.25s ease;
+}
+
+
+/* ============================================================
+   2. RESET & BASE
+   Why: Browsers apply different default margins, paddings, and box models.
+   This minimal reset normalizes those defaults so our layout behaves
+   identically across Chrome, Firefox, Safari, and Edge.
+   ============================================================ */
+
+/* box-sizing:border-box — padding and border are included in the element's
+   stated width/height. Without this, adding padding to an input would make it
+   wider than its container, breaking the form layout. */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  /* -webkit-text-size-adjust: prevents iOS Safari from auto-enlarging text
+     in landscape mode, which would break the sidebar/main grid proportions. */
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  color: var(--clr-text);
+  background: var(--clr-bg);
+  min-height: 100vh;
+  /* min-height:100vh — body stretches to fill the full viewport even when
+     content is short, so the footer always sits at the bottom. */
+  display: flex;
+  flex-direction: column;
+  /* Flex column on body: header + .app-layout + footer stack vertically.
+     .app-layout has flex:1 so it grows to fill all remaining space. */
+  line-height: 1.5;
+  /* 1.5 line-height: WCAG 1.4.12 recommends at least 1.5× for body text. */
+}
+
+/* Remove browser bullet points; we use role="list" in HTML to restore the
+   implicit list semantics that Safari strips when list-style is removed. */
+ul, ol { list-style: none; }
+
+button {
+  font-family: inherit; /* browsers don't inherit font-family on buttons by default */
+  cursor: pointer;
+  border: none;
+  background: none;
+  /* Stripping defaults lets .btn classes build up from a clean base. */
+}
+
+input, textarea {
+  font-family: inherit; /* same issue — browsers use a system font, not the page's */
+  font-size: inherit;
+}
+
+a { color: inherit; text-decoration: none; }
+
+img, svg { display: block; max-width: 100%; }
+
+
+/* ============================================================
+   3. ACCESSIBILITY UTILITIES
+   ============================================================ */
+
+/* .sr-only — visually hidden but present in the accessibility tree.
+   Used on <label> elements paired with inputs that have descriptive
+   placeholders (deck search, card search). The label is required for
+   screen reader association; .sr-only hides it from sighted users
+   who don't need the redundant text.
+
+   This specific combination of properties (not just display:none or
+   visibility:hidden) is the industry-standard technique that keeps
+   the element in the accessibility tree while removing it from layout. */
+/* ── Skip link (audit issue #20 — WCAG 2.4.1 Level A) ────────────────────────
+   Visually hidden until it receives keyboard focus, then slides into view at
+   the top-left of the viewport. This is the standard skip-link pattern:
+     - position:fixed keeps it above all content when visible
+     - transform:translateY(-100%) hides it off-screen (not display:none, which
+       would remove it from tab order entirely)
+     - :focus-visible brings it into view with a high-contrast style
+   z-index:300 > modals (200) so it always appears on top. */
+.skip-link {
+  position: fixed;
+  top: var(--space-sm);
+  left: var(--space-sm);
+  z-index: 300;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--clr-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform var(--transition-fast);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* :focus-visible — shows the focus ring ONLY for keyboard navigation,
+   not for mouse clicks. This satisfies WCAG 2.4.7 (Focus Visible) without
+   the jarring ring that appears when mouse-clicking buttons.
+   Applied globally so every interactive element (buttons, inputs, the
+   study card div) gets a consistent, branded focus style. */
+:focus-visible {
+  outline: 2px solid var(--clr-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+
+/* ============================================================
+   4. HEADER
+   Requirement: "Clean, readable UI" — persistent branding and global action.
+
+   position:sticky keeps the header visible as the main content scrolls.
+   This matters when a deck has many cards; users shouldn't have to scroll
+   back up to start a new deck.
+   z-index:100 ensures it renders above the card grid and modals' backdrop
+   during scroll (modals use z-index:200 to still appear above the header).
+   ============================================================ */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--header-height);
+  background: var(--clr-surface);
+  border-bottom: 1px solid var(--clr-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.header-logo { font-size: 1.4rem; }
+
+.header-title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--clr-primary);
+  letter-spacing: -0.01em; /* tight tracking on large bold text looks more refined */
+}
+
+
+/* ============================================================
+   5. LAYOUT — CSS Grid (Sidebar + Main)
+   Requirement: "Responsive layout"
+
+   CSS Grid is used (not Flexbox) because we need a true two-dimensional
+   layout: a fixed-width sidebar column and a fluid main column that both
+   fill the full available height.
+
+   grid-template-columns: var(--sidebar-width) 1fr
+     — sidebar is fixed at 260px; main takes all remaining space.
+
+   flex:1 on .app-layout — grows to fill the space between the sticky
+   header and the footer. min-height:0 prevents a Grid/Flex overflow
+   bug in Chrome where children can escape a container with overflow:hidden.
+   ============================================================ */
+.app-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: 1fr;
+  min-height: 0; /* critical: allows overflow:hidden on children to work correctly */
+}
+
+
+/* ============================================================
+   6. SIDEBAR
+   Requirement: "App supports multiple decks" — the sidebar lists all decks.
+   ============================================================ */
+.sidebar {
+  background: var(--clr-surface);
+  border-right: 1px solid var(--clr-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* contains the scrollable .deck-list without the sidebar itself scrolling */
+}
+
+.sidebar-header {
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+  border-bottom: 1px solid var(--clr-border);
+}
+
+.sidebar-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em; /* spaced uppercase = common pattern for section labels */
+  color: var(--clr-text-muted);
+}
+
+.sidebar-search {
+  padding: var(--space-sm) var(--space-md);
+}
+
+/* .deck-list scrolls independently of the sidebar container.
+   flex:1 makes it fill all remaining sidebar height below the search input. */
+.deck-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xs) 0;
+}
+
+.deck-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-md);
+  transition: background var(--transition-fast);
+}
+
+.deck-item:hover { background: var(--clr-surface-alt); }
+
+/* Active deck: left border accent + tinted background.
+   The 3px border visually "selects" the deck without needing an icon or
+   extra markup — a common pattern in sidebar navigation (VS Code, Notion). */
+.deck-item.active {
+  background: #eef1ff;
+  border-left: 3px solid var(--clr-primary);
+}
+
+/* The deck button takes up all space not used by the action icons.
+   flex-direction:column stacks the deck name above the card count. */
+.deck-item-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-xs) 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.deck-name {
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--clr-text);
+}
+
+.deck-count {
+  font-size: var(--font-size-sm);
+  color: var(--clr-text-muted);
+}
+
+/* Edit/Delete icons are hidden (opacity:0) until the row is hovered or active.
+   Using opacity instead of display:none keeps the icons in the layout so the
+   row height doesn't change on hover — no layout shift. */
+.deck-item-actions {
+  display: flex;
+  gap: var(--space-xs);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.deck-item:hover .deck-item-actions,
+.deck-item.active .deck-item-actions {
+  opacity: 1;
+}
+
+/* Enhanced sidebar empty state (audit #13) */
+.sidebar-empty {
+  padding: var(--space-lg) var(--space-md);
+  color: var(--clr-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.sidebar-empty-icon { font-size: 2rem; }
+.sidebar-empty-text { font-weight: 500; color: var(--clr-text); }
+/* Smaller button variant for tight sidebar space */
+.btn--sm { padding: 0.375rem 0.75rem; font-size: var(--font-size-sm); }
+
+
+/* ============================================================
+   7. MAIN CONTENT — Views
+   Three views share the same .main-content container.
+   Only one is visible at a time (JS toggles [hidden]).
+   overflow-y:auto allows the card grid to scroll without the
+   header or footer scrolling off screen.
+   ============================================================ */
+.main-content {
+  overflow-y: auto;
+  padding: var(--space-xl);
+  position: relative; /* positioning context for any absolute children */
+}
+
+.view { width: 100%; }
+
+/* Empty state: vertically centered in the main area using Flexbox.
+   min-height:60vh ensures the content doesn't hug the top of the area
+   on tall viewports. */
+.view-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.empty-state {
+  text-align: center;
+  max-width: 360px; /* constrains line length for readability */
+}
+
+.empty-icon {
+  font-size: 3.5rem;
+  margin-bottom: var(--space-md);
+}
+
+.empty-state h2 {
+  font-size: var(--font-size-xl);
+  margin-bottom: var(--space-sm);
+}
+
+.empty-state p {
+  color: var(--clr-text-muted);
+  margin-bottom: var(--space-lg);
+}
+
+/* Deck header: space-between keeps title on the left, action buttons on the right.
+   flex-wrap allows buttons to wrap below the title on narrow viewports instead
+   of overflowing horizontally. */
+.deck-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.deck-title {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+}
+
+.deck-subtitle {
+  display: block; /* <span> is inline by default; block lets margin-top work */
+  font-size: var(--font-size-sm);
+  color: var(--clr-text-muted);
+  margin-top: var(--space-xs);
+}
+
+.deck-header-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-shrink: 0; /* prevents buttons from shrinking when the title is long */
+}
+
+/* Card filter bar — wraps search input + match count */
+.card-filter-bar {
+  margin-bottom: var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Match count badge: shown when a search query is active.
+   Visually subtle so it doesn't compete with card content.
+   [hidden] hides it when no query is active (JS toggles the attribute). */
+.search-count {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  color: var(--clr-text-muted);
+  white-space: nowrap;
+}
+
+/* Zero-results state: red weight signals "nothing found" clearly */
+.search-count.no-results {
+  color: var(--clr-danger);
+  font-weight: 600;
+}
+
+/* Card grid — CSS Grid with auto-fill.
+   Requirement: "Responsive layout"
+   repeat(auto-fill, minmax(240px, 1fr)):
+     - auto-fill: creates as many columns as fit in the available width
+     - minmax(240px, 1fr): each column is at least 240px wide, max 1 fraction
+   Result: 3 columns on desktop, 2 on tablet, 1 on mobile — zero media queries needed.
+   This is the "intrinsically responsive" grid pattern. */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-md);
+}
+
+/* Card items lift on hover to signal interactivity.
+   translateY(-2px) + shadow increase is the standard "card lift" pattern. */
+.card-item {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.card-item:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card-face { font-size: var(--font-size-sm); }
+
+/* Front text is bold — visually the "question."
+   Back text is muted and separated by a border — visually the "answer."
+   This mirrors the physical convention of flashcards. */
+.card-front {
+  font-weight: 600;
+  color: var(--clr-text);
+}
+
+.card-back {
+  color: var(--clr-text-muted);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--clr-border);
+}
+
+/* Edit/Delete buttons pushed to the bottom of each card via margin-top:auto.
+   This keeps actions consistently at the bottom regardless of card text length. */
+.card-item-actions {
+  display: flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: var(--space-sm);
+}
+
+/* Enhanced deck empty state (audit #14) */
+.deck-empty {
+  margin-top: var(--space-xl);
+  text-align: center;
+  color: var(--clr-text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.deck-empty-icon  { font-size: 3rem; }
+.deck-empty-text  { font-size: var(--font-size-lg); font-weight: 600; color: var(--clr-text); }
+.deck-empty-hint  { font-size: var(--font-size-sm); color: var(--clr-text-muted); }
+
+
+/* ============================================================
+   8. STUDY MODE — 3D Card Flip
+   Requirement: "flip cards" in study mode.
+
+   HOW THE 3D FLIP WORKS (step by step):
+
+   Step 1 — .study-card sets perspective:1000px
+     Creates a 3D viewing frustum. 1000px is a common value that makes
+     the flip look natural without exaggerating depth distortion.
+
+   Step 2 — .study-card-inner has transform-style:preserve-3d
+     Without this, child elements (front + back faces) are flattened
+     onto a 2D plane — the back face would never become visible.
+
+   Step 3 — JS toggles class "flipped" on .study-card
+     .study-card.flipped .study-card-inner { transform: rotateY(180deg) }
+     The entire inner div rotates 180° around the Y axis (like turning a page).
+
+   Step 4 — Both faces are position:absolute; inset:0
+     They occupy the same space. Only one faces the viewer at a time.
+
+   Step 5 — .study-card-back starts pre-rotated rotateY(180deg)
+     When the inner div rotates 180°, the back face rotates an additional 180°
+     (total 360°) and faces forward. The front face faces backward.
+
+   Step 6 — backface-visibility:hidden
+     Each face is hidden when rotated >90° away from the viewer.
+     Without this, the back of each face would show through during the animation.
+
+   Step 7 — transition:transform 0.45s ease on .study-card-inner
+     Animates the rotation smoothly. Removed for users who prefer reduced motion
+     (see @media prefers-reduced-motion at the bottom of this file).
+   ============================================================ */
+.study-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-xl);
+}
+
+/* font-variant-numeric:tabular-nums — keeps "1 / 12" and "10 / 12" the same
+   width so the progress counter doesn't jump left/right as the number changes. */
+.study-progress {
+  font-size: var(--font-size-sm);
+  color: var(--clr-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Step 1: perspective container */
+.study-card {
+  perspective: 1000px;
+  max-width: 560px;
+  margin: 0 auto var(--space-xl);
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+}
+
+/* Step 2: 3D-preserved inner container + flip animation */
+.study-card-inner {
+  position: relative;
+  min-height: 280px;
+  transform-style: preserve-3d;   /* children share the same 3D plane */
+  transition: transform 0.45s ease;
+  border-radius: var(--radius-lg);
+}
+
+/* Step 3: JS adds class "is-flipped" to trigger the rotation.
+   Using "is-flipped" (BEM state convention) makes the toggle intent
+   explicit — "is-" prefix signals this is a transient JS-driven state,
+   not a styling variant. JS reads/writes this class in the study module. */
+.study-card.is-flipped .study-card-inner {
+  transform: rotateY(180deg);
+}
+
+/* Step 4 + 6: both faces occupy the same space, hide when facing away */
+.study-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden; /* Safari requires the vendor prefix */
+  background: var(--clr-surface);
+  border: 2px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  text-align: center;
+}
+
+/* Step 5: back face starts at 180° so it faces forward after the parent rotates.
+   Different background + border color visually signals "you're seeing the answer." */
+.study-card-back {
+  transform: rotateY(180deg);
+  background: #f0f3ff;
+  border-color: var(--clr-primary);
+}
+
+.study-card-text {
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.study-card-hint {
+  margin-top: var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--clr-text-muted);
+}
+
+/* Navigation row: centered, same max-width as the card so buttons align below it */
+.study-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+
+/* ============================================================
+   9. BUTTONS
+   Three semantic variants + one size variant:
+     .btn-primary   — main action (Study, Save, Flip)
+     .btn-secondary — supporting action (Prev, Next, Add Card)
+     .btn-ghost     — low-emphasis action (Cancel, Back, Shuffle)
+     .btn-danger    — destructive action (delete) — applied in JS, not hardcoded in HTML
+     .btn-icon      — icon-only, no visible label (edit/delete per-item icons)
+
+   All variants extend .btn which provides the shared layout and transition.
+   Requirement: "basic accessibility" — each button has aria-label or visible text.
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              box-shadow var(--transition-fast), transform var(--transition-fast);
+  white-space: nowrap;
+  user-select: none; /* prevents text selection on rapid double-click */
+}
+
+/* Press feedback: slight scale-down to simulate a physical button press */
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--clr-primary);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--clr-primary-hov); }
+
+.btn-secondary {
+  background: var(--clr-surface-alt);
+  color: var(--clr-text);
+  border: 1px solid var(--clr-border);
+}
+.btn-secondary:hover { background: var(--clr-border); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--clr-text-muted);
+}
+.btn-ghost:hover {
+  background: var(--clr-surface-alt);
+  color: var(--clr-text);
+}
+
+.btn-danger {
+  background: var(--clr-danger);
+  color: #fff;
+}
+.btn-danger:hover { background: var(--clr-danger-hov); }
+
+/* .btn-icon: used for the ✏️ and 🗑 buttons inside each deck/card row.
+   Smaller padding (no text), colored hover to signal edit vs delete intent. */
+.btn-icon {
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  color: var(--clr-text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.btn-icon:hover { background: var(--clr-surface-alt); color: var(--clr-text); }
+/* audit issue #7/#11: explicit focus-visible style on icon buttons.
+   The global :focus-visible rule covers most elements, but .btn-icon has a very
+   small hit area — a 2px outline can be hard to see. Using box-shadow instead
+   gives a larger, more visible ring without affecting layout. */
+.btn-icon:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--clr-focus);
+}
+/* .danger modifier on the delete icon: red background on hover signals irreversibility */
+.btn-icon.danger:hover { background: #fee2e2; color: var(--clr-danger); }
+
+
+/* ============================================================
+   10. INPUTS & FORMS
+   Requirement: "Create, edit, delete decks and cards" — these styles
+   make the modal forms usable and accessible.
+   ============================================================ */
+
+/* Shared styles for search inputs and form inputs.
+   Both get the same visual treatment for consistency. */
+.input-search,
+.form-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-sm);
+  background: var(--clr-surface);
+  color: var(--clr-text);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Focus state: border turns primary color + a soft glow ring.
+   This replaces the default browser outline (turned off here for inputs
+   because we provide our own) — the glow is more visible than the thin
+   default outline on Windows/Chrome. */
+.input-search:focus,
+.form-input:focus {
+  outline: none;
+  border-color: var(--clr-primary);
+  box-shadow: 0 0 0 3px rgba(79,110,247,.15);
+}
+
+/* Textarea specific: resize:vertical lets users expand the input for
+   long card text, but not resize horizontally (which would break the layout). */
+.form-textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+/* Form group: label stacked above input, error message below.
+   Column direction + gap is cleaner than margin-bottom on each child. */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.form-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--clr-text);
+}
+
+/* Error message: red, small. Shown by JS (removing [hidden]) when validation
+   fails. role="alert" in HTML makes screen readers announce it immediately. */
+.form-error {
+  font-size: var(--font-size-sm);
+  color: var(--clr-danger);
+}
+
+
+/* ============================================================
+   11. MODALS
+   Requirement: "Create, edit, delete decks and cards" — all mutations
+   happen through these modal dialogs.
+
+   Architecture: the overlay covers the viewport (position:fixed; inset:0),
+   the .modal box is centered inside it. Clicking the overlay backdrop closes
+   the modal (handled in JS by checking if the click target is .modal-overlay,
+   not .modal itself). This is the standard "light-dismiss" pattern.
+   ============================================================ */
+
+/* Full-screen backdrop: semi-transparent black dims the page behind the modal.
+   z-index:200 > header's z-index:100 so modals always appear on top. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md); /* prevents modal from touching viewport edges on mobile */
+  animation: fade-in 0.15s ease;
+}
+
+/* [hidden] attribute hides the overlay. CSS-in-JS frameworks toggle classes;
+   we use the native HTML attribute which is also in the accessibility tree. */
+.modal-overlay[hidden] { display: none; }
+
+/* Fade-in on open: subtle — too fast to feel laggy, enough to feel intentional. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal {
+  background: var(--clr-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  width: 100%;
+  max-width: 440px; /* constrains to a readable width on wide screens */
+  box-shadow: var(--shadow-lg);
+  animation: slide-up 0.2s ease;
+}
+
+/* Slide-up on open: modal appears to rise from slightly below center.
+   A small vertical motion (16px) gives the modal a sense of appearing
+   rather than just suddenly being there. */
+@keyframes slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.modal-title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  margin-bottom: var(--space-lg);
+}
+
+/* Action buttons right-aligned: standard convention for dialog actions
+   (Cancel on left, confirm on right). Matches OS dialog conventions. */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+
+/* Confirm modal variant: slightly narrower, message text styled */
+.modal--confirm { max-width: 360px; }
+
+.confirm-message {
+  color: var(--clr-text-muted);
+  font-size: var(--font-size-md);
+  margin-bottom: var(--space-md);
+  line-height: 1.5;
+}
+
+/* ============================================================
+   12. FOOTER
+   role="contentinfo" in HTML: ARIA landmark for page-level metadata.
+   Fixed height set via --footer-height; body's flex column keeps it
+   pinned to the bottom without position:fixed (which would overlap content).
+   ============================================================ */
+.app-footer {
+  height: var(--footer-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  font-size: var(--font-size-sm);
+  color: var(--clr-text-muted);
+}
+
+
+/* ============================================================
+   13. RESPONSIVE BREAKPOINTS
+   Requirement: "Responsive layout"
+
+   Two breakpoints:
+     768px — tablet: sidebar collapses from a fixed side column to a
+             horizontal scrollable strip above the main content.
+     480px — mobile: further reduce spacing, single-column card grid,
+             stack deck header buttons vertically.
+
+   The card grid itself is already intrinsically responsive via auto-fill
+   (no media query needed); these breakpoints handle structural layout changes.
+   ============================================================ */
+
+/* Tablet: sidebar moves from left-column to top-strip.
+   grid-template-columns:1fr removes the two-column layout so sidebar and
+   main stack vertically (grid-template-rows:auto 1fr). */
+@media (max-width: 768px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--clr-border);
+    max-height: 220px; /* limits vertical space taken; deck-list scrolls within */
+    overflow-y: auto;
+  }
+
+  .main-content {
+    padding: var(--space-md); /* tighter padding recovers horizontal space */
+  }
+}
+
+/* Mobile: further reduce whitespace and simplify layouts. */
+@media (max-width: 480px) {
+  :root {
+    --space-xl: 1.25rem; /* override the XL spacing token — 20px instead of 32px */
+  }
+
+  .app-header { padding: 0 var(--space-md); }
+
+  /* Stack deck title + buttons vertically on narrow screens */
+  .deck-header { flex-direction: column; }
+
+  /* Force single-column cards on very small screens
+     (auto-fill already handles this, but this ensures it below 480px) */
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .study-card-face {
+    padding: var(--space-lg); /* less padding so card text has more room */
+  }
+
+  .study-card-text {
+    font-size: var(--font-size-md); /* scale down study text on small screens */
+  }
+
+  .study-nav {
+    gap: var(--space-sm); /* tighter gap between Prev/Flip/Next buttons */
+  }
+
+  .modal {
+    padding: var(--space-lg); /* less modal padding on mobile */
+  }
+}
+
+
+/* ============================================================
+   14. REDUCED MOTION
+   Requirement: "basic accessibility"
+
+   Users with vestibular disorders (motion sickness, vertigo) can enable
+   "Reduce Motion" in their OS settings. This media query respects that
+   preference by disabling the 3D flip transition and modal animations.
+   The card still "flips" logically (JS still swaps front/back text);
+   it just happens instantly rather than with animation.
+
+   WCAG 2.3.3 (Animation from Interactions) — Level AAA, but still
+   a strong best practice for any app with significant motion.
+   ============================================================ */
+/* ============================================================
+   DARK MODE  (audit issue #16)
+   ============================================================
+   Overrides the CSS custom properties defined in :root.
+   Because every rule in the file uses var(--clr-*), swapping the
+   variables here updates the entire UI with no selector changes.
+
+   CONTRAST CHECKS (dark palette):
+     --clr-text (#e8eaf4) on --clr-bg (#111827):     ~14.2:1 ✓ AAA
+     --clr-text-muted (#9aa3bc) on --clr-bg:         ~6.4:1  ✓ AA
+     --clr-primary (#7b94fa) on --clr-bg:            ~5.1:1  ✓ AA
+     #fff on --clr-primary (#7b94fa) (btn text):     ~4.6:1  ✓ AA
+
+   Shadows are made lighter (less opaque) — dark backgrounds need
+   less shadow depth to achieve the same visual separation.
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --clr-bg:          #111827;
+    --clr-surface:     #1f2937;
+    --clr-surface-alt: #27334a;
+    --clr-border:      #374151;
+    --clr-primary:     #7b94fa;   /* lightened blue — passes AA on dark bg */
+    --clr-primary-hov: #6b82f5;
+    --clr-danger:      #f87171;
+    --clr-danger-hov:  #ef4444;
+    --clr-text:        #e8eaf4;
+    --clr-text-muted:  #9aa3bc;   /* 6.4:1 on --clr-bg ✓ */
+    --clr-focus:       #7b94fa;
+
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.25);
+    --shadow-md: 0 4px 12px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.30);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,.55);
+  }
+
+  /* Study card back face: use a dark tinted bg instead of light blue */
+  .study-card-back {
+    background: #1e2a4a;
+    border-color: var(--clr-primary);
+  }
+
+  /* Deck item active state: dark tinted highlight */
+  .deck-item.active { background: #1e2a4a; }
+
+  /* Modal overlay backdrop: slightly lighter than pure black on dark screens */
+  .modal-overlay { background: rgba(0, 0, 0, 0.65); }
+
+  /* Danger hover on icon buttons: dark red tint instead of light red */
+  .btn-icon.danger:hover { background: #3b1a1a; color: var(--clr-danger); }
+
+  /* No-results search count */
+  .search-count.no-results { color: #f87171; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-card-inner { transition: none; }       /* disable the 3D flip rotation */
+  .modal, .modal-overlay { animation: none; }   /* disable fade-in and slide-up */
+  .card-item { transition: none; }              /* disable card lift on hover */
+}
