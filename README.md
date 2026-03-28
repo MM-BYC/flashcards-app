@@ -690,3 +690,87 @@ MIT — free to use, modify, and distribute.
 ---
 
 *Built with HTML, CSS, and JavaScript. No frameworks. No build step. No dependencies.*
+
+---
+
+## REFLECTIONS
+
+- **Where AI saved time.**
+  AI eliminated the boilerplate burden entirely. The full HTML shell — semantic landmarks, ARIA roles, modal scaffolding, skip link, all three views, three modals, and inline documentation — was produced in a single pass that would have taken several hours to write by hand. The same applied to `storage.js`: schema versioning, a migration chain, safe JSON parse fallback, and shape normalisation functions were generated complete and correct on the first attempt. This freed focus for the decisions that actually required judgment: architecture, accessibility audits, and integration review.
+
+- **An AI bug identified and how it was fixed.**
+  The confirm dialog was broken in a subtle but critical way. The original generated code attached three separate `addEventListener('click', ...)` calls to the same `btnConfirmOk` button — one inside `openDeckModal`, one inside `openCardModal`, and one inside `confirmDialog` itself. Because listeners accumulate across calls and the button is never replaced in the DOM, each subsequent confirmation fired the handler multiple times, resolving the `Promise<boolean>` more than once. The fix was to centralise confirmation entirely inside `confirmDialog()`, store the `resolve` reference before calling the close helper, and call `resolve(true)` exactly once after the modal dismissed — eliminating the duplicate registrations.
+
+  ```js
+  // Before (broken): listeners stacked on every call
+  btnConfirmOk.addEventListener('click', () => resolve(true));
+
+  // After (fixed): one-time listener, resolve called post-close
+  function confirmDialog(message) {
+    return new Promise(resolve => {
+      confirmMsg.textContent = message;
+      modalConfirm.open(null);
+      function onOk() {
+        btnConfirmOk.removeEventListener('click', onOk);
+        modalConfirm.close();
+        resolve(true);
+      }
+      btnConfirmOk.addEventListener('click', onOk);
+      modalConfirm._resolveCancel = () => resolve(false);
+    });
+  }
+  ```
+
+- **A code snippet refactored for clarity.**
+  The initial study-mode navigation used an inline ternary chain that obscured intent:
+
+  ```js
+  // Before: hard to read, intent buried
+  state.study.index = dir === 'next'
+    ? state.study.index < state.study.cards.length - 1
+      ? state.study.index + 1
+      : state.study.index
+    : state.study.index > 0
+      ? state.study.index - 1
+      : state.study.index;
+  _setStudyCard(state.study.index);
+  ```
+
+  Refactored into named functions with a boundary clamp, making each path self-documenting:
+
+  ```js
+  // After: explicit, boundary-safe, readable
+  function goToNext() {
+    const next = state.study.index + 1;
+    if (next < state.study.cards.length) _setStudyCard(next);
+  }
+
+  function goToPrev() {
+    const prev = state.study.index - 1;
+    if (prev >= 0) _setStudyCard(prev);
+  }
+
+  // _setStudyCard clamps defensively regardless:
+  function _setStudyCard(idx) {
+    const safeIdx = Math.max(0, Math.min(idx, state.study.cards.length - 1));
+    state.study.index = safeIdx;
+    _resetFlip();
+    _renderStudyCard();
+  }
+  ```
+
+- **One accessibility improvement added.**
+  The `#card-search-count` live region was initially toggled with the `[hidden]` attribute to hide it when no search was active. This caused screen readers to silently ignore it — because browsers only register `aria-live` regions that are present and visible in the DOM at parse time. Hiding and re-showing the element mid-session meant the region was never pre-registered, so typing a search query produced no announcement at all. The fix was two-part: remove `[hidden]` from the element in `index.html` so it is always in the accessibility tree, and replace `setAttribute('hidden', '')` in `app.js` with `textContent = ''` to clear it visually without removing it from the tree.
+
+  ```html
+  <!-- Before: live region hidden on load → never registered by screen readers -->
+  <span id="card-search-count" class="search-count"
+        aria-live="polite" aria-atomic="true" hidden></span>
+
+  <!-- After: always present → registered at parse time → announces reliably -->
+  <span id="card-search-count" class="search-count"
+        aria-live="polite" aria-atomic="true"></span>
+  ```
+
+- **What prompt changes improved AI output.**
+  Early prompts described features in isolation ("add a search bar") and produced functional but disconnected code that required significant rewiring. Output quality improved substantially once prompts specified the *constraint* alongside the feature: for example, "implement debounced search that filters `deck.cards` into a derived local variable — never mutate the stored array" produced correct, non-destructive filtering immediately. Similarly, adding an explicit accessibility requirement to each part prompt ("ensure all interactive elements are keyboard operable and have visible focus styles") shifted the AI from treating accessibility as an afterthought to building it in from the start. The most impactful single change was asking for **inline rationale comments** — prompting the AI to explain *why* each pattern was chosen, not just *what* it did, which made bugs far easier to spot during review.
